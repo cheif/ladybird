@@ -20,6 +20,7 @@ static constexpr auto POPOVER_PADDING = 6uz;
 @property (nonatomic, weak) NSToolbarItem* toolbar_item;
 
 @property (nonatomic, strong) NSTableView* table_view;
+@property (nonatomic, strong) NSTableViewDiffableDataSource<NSNumber *, NSString*>* data_source;
 
 @end
 
@@ -43,9 +44,28 @@ static constexpr auto POPOVER_PADDING = 6uz;
         [self.table_view setRefusesFirstResponder:YES];
         [self.table_view setRowSizeStyle:NSTableViewRowSizeStyleDefault];
         [self.table_view addTableColumn:column];
-        [self.table_view setDataSource:self];
-        [self.table_view setDelegate:self];
         [self.table_view setTarget:self];
+
+        self.data_source = [[NSTableViewDiffableDataSource alloc] initWithTableView:self.table_view cellProvider:^NSView * _Nonnull(NSTableView * _Nonnull table_view, NSTableColumn * _Nonnull __unused, NSInteger __unused, NSString * _Nonnull suggestion) {
+            NSTableCellView* view = [table_view makeViewWithIdentifier:AUTOCOMPLETE_IDENTIFIER owner:self];
+
+            if (view == nil) {
+                view = [[NSTableCellView alloc] initWithFrame:NSZeroRect];
+
+                NSTextField* text_field = [[NSTextField alloc] initWithFrame:NSZeroRect];
+                [text_field setBezeled:NO];
+                [text_field setDrawsBackground:NO];
+                [text_field setEditable:NO];
+                [text_field setSelectable:NO];
+
+                [view addSubview:text_field];
+                [view setTextField:text_field];
+                [view setIdentifier:AUTOCOMPLETE_IDENTIFIER];
+            }
+
+            [view.textField setStringValue:suggestion];
+            return view;
+        }];
 
         auto* scroll_view = [[NSScrollView alloc] init];
         [scroll_view setHasVerticalScroller:YES];
@@ -72,7 +92,15 @@ static constexpr auto POPOVER_PADDING = 6uz;
 - (void)showWithSuggestions:(Vector<String>)suggestions
 {
     m_suggestions = move(suggestions);
-    [self.table_view reloadData];
+    NSDiffableDataSourceSnapshot<NSNumber *, NSString *> *snapshot = [[NSDiffableDataSourceSnapshot alloc] init];
+
+    [snapshot appendSectionsWithIdentifiers:@[@0]];
+    for (size_t i = 0; i < m_suggestions.size(); i++) {
+        [snapshot appendItemsWithIdentifiers:@[Ladybird::string_to_ns_string(m_suggestions[i])]];
+    }
+
+    [snapshot appendItemsWithIdentifiers:@[@"foo"]];
+    [self.data_source applySnapshot:snapshot animatingDifferences:NO];
 
     if (m_suggestions.is_empty()) {
         [self close];
@@ -165,39 +193,6 @@ static constexpr auto POPOVER_PADDING = 6uz;
 
     [self.table_view selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
     [self.table_view scrollRowToVisible:[self.table_view selectedRow]];
-}
-
-#pragma mark - NSTableViewDataSource
-
-- (NSInteger)numberOfRowsInTableView:(NSTableView*)tableView
-{
-    return static_cast<NSInteger>(m_suggestions.size());
-}
-
-#pragma mark - NSTableViewDelegate
-
-- (NSView*)tableView:(NSTableView*)table_view
-    viewForTableColumn:(NSTableColumn*)table_column
-                   row:(NSInteger)row
-{
-    NSTableCellView* view = [table_view makeViewWithIdentifier:AUTOCOMPLETE_IDENTIFIER owner:self];
-
-    if (view == nil) {
-        view = [[NSTableCellView alloc] initWithFrame:NSZeroRect];
-
-        NSTextField* text_field = [[NSTextField alloc] initWithFrame:NSZeroRect];
-        [text_field setBezeled:NO];
-        [text_field setDrawsBackground:NO];
-        [text_field setEditable:NO];
-        [text_field setSelectable:NO];
-
-        [view addSubview:text_field];
-        [view setTextField:text_field];
-        [view setIdentifier:AUTOCOMPLETE_IDENTIFIER];
-    }
-
-    [view.textField setStringValue:Ladybird::string_to_ns_string(m_suggestions[row])];
-    return view;
 }
 
 @end
